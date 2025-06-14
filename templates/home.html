@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}TravelHub - Home{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Top Rated Resorts</h1>
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for resort, avg_score in resorts %}
+    <div class="col">
+        <div class="card h-100">
+            {% if resort.picture_local_address %}
+            <img src="{{ resort.picture_local_address }}" class="card-img-top" alt="{{ resort.resort_name }}">
+            {% else %}
+            <img src="{{ url_for('static', filename='images/default-resort.jpg') }}" class="card-img-top" alt="Default Resort Image">
+            {% endif %}
+            <div class="card-body">
+                <h5 class="card-title">{{ resort.resort_name }}</h5>
+                <p class="card-text">
+                    <strong>Location:</strong> {{ resort.city }}, {{ resort.state }}, {{ resort.country }}<br>
+                    <strong>Type:</strong> {{ resort.resort_type }}<br>
+                    <strong>Average Rating:</strong> {{ "%.1f"|format(avg_score|float) }}/10
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %} 
