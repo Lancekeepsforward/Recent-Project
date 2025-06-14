@@ -44,8 +44,8 @@ CREATE DATABASE TravelHub;
 5. Create a `.env` file in the project root with the following content:
 ```
 SECRET_KEY=your-secret-key-here
-DB_USER=root
-DB_PASSWORD=Woaixuexi123
+DB_USER
+DB_PASSWORD
 DB_HOST=localhost
 DB_NAME=TravelHub
 ```
