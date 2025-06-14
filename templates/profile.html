@@ -1,47 +1,98 @@
 {% extends "base.html" %}
 
-{% block title %}TravelHub - Profile{% endblock %}
+{% block title %}个人资料 - TravelHub{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h3>Profile Information</h3>
-            </div>
-            <div class="card-body">
-                <p><strong>Username:</strong> {{ current_user.username }}</p>
-                <p><strong>Member since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') }}</p>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h3>My Resort Reviews</h3>
-            </div>
-            <div class="card-body">
-                {% if current_user.resorts %}
-                    {% for user_resort in current_user.resorts %}
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <h5 class="card-title">{{ user_resort.resort.resort_name }}</h5>
-                            <p class="card-text">
-                                <strong>Location:</strong> {{ user_resort.resort.city }}, {{ user_resort.resort.state }}, {{ user_resort.resort.country }}<br>
-                                <strong>Rating:</strong> {{ user_resort.recommendation }}/10<br>
-                                <strong>Expenditure:</strong> ${{ "%.2f"|format(user_resort.expenditure|float) }}<br>
-                                <strong>Comment:</strong> {{ user_resort.comment }}<br>
-                                <strong>Reviewed on:</strong> {{ user_resort.created_at.strftime('%B %d, %Y') }}
-                            </p>
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <h2 class="mb-4">个人资料</h2>
+            {# 显示当前用户的基本信息 #}
+            <ul class="list-group mb-4">
+                <li class="list-group-item"><strong>用户名：</strong> {{ current_user.username }}</li>
+                <li class="list-group-item"><strong>昵称：</strong> {{ current_user.nickname }}</li>
+                <li class="list-group-item"><strong>管理员：</strong> {{ '是' if current_user.is_admin else '否' }}</li>
+                <li class="list-group-item"><strong>注册时间：</strong> {{ current_user.created_at.strftime('%Y-%m-%d %H:%M:%S') if current_user.created_at else '' }}</li>
+            </ul>
+
+            {# 新度假村提交表单 #}
+            <h4 class="mt-5">提交新的度假村</h4>
+            <form method="POST" enctype="multipart/form-data" class="mb-5">
+                <div class="mb-3">
+                    <label class="form-label">度假村名称</label>
+                    <input type="text" class="form-control" name="resort_name" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">国家</label>
+                    <input type="text" class="form-control" name="country" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">州/省</label>
+                    <input type="text" class="form-control" name="state">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">城市</label>
+                    <input type="text" class="form-control" name="city">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">县</label>
+                    <input type="text" class="form-control" name="county">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">度假村类型</label>
+                    <input type="text" class="form-control" name="resort_type" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">评分（1-10分）</label>
+                    <input type="number" class="form-control" name="recommendation" min="1" max="10">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">花销（元）</label>
+                    <input type="number" class="form-control" name="expenditure" min="0" step="0.01">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">评论</label>
+                    <textarea class="form-control" name="comment" rows="3"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">上传图片</label>
+                    <input type="file" class="form-control" name="picture" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-success">提交</button>
+            </form>
+
+            {# 展示该用户提交的度假村列表 #}
+            <h4 class="mt-5">我提交的度假村</h4>
+            {% if resorts and resorts|length > 0 %}
+                <div class="row">
+                    {% for resort in resorts %}
+                        <div class="col-md-6 mb-4 d-flex">
+                            <div class="card h-100 w-100 d-flex flex-column">
+                                <a href="{{ url_for('resort_detail', resort_id=resort.id) }}">
+                                    {% if resort.picture_local_address %}
+                                        <img src="{{ url_for('static', filename=resort.picture_local_address) }}" class="card-img-top" alt="度假村图片" style="height:200px;object-fit:cover;">
+                                    {% endif %}
+                                </a>
+                                <div class="card-body flex-grow-1 d-flex flex-column">
+                                    <h5 class="card-title">
+                                        <a href="{{ url_for('resort_detail', resort_id=resort.id) }}" style="text-decoration:none;color:inherit;">
+                                            {{ resort.resort_name }}
+                                        </a>
+                                    </h5>
+                                    <p class="card-text mb-0">
+                                        <strong>国家：</strong>{{ resort.country }}<br>
+                                        <strong>州/省：</strong>{{ resort.state or '无' }}<br>
+                                        <strong>城市：</strong>{{ resort.city or '无' }}<br>
+                                        <strong>县：</strong>{{ resort.county or '无' }}<br>
+                                        <strong>类型：</strong>{{ resort.resort_type }}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
                     {% endfor %}
-                {% else %}
-                    <p>You haven't reviewed any resorts yet.</p>
-                {% endif %}
-            </div>
+                </div>
+            {% else %}
+                <p>你还没有提交过度假村。</p>
+            {% endif %}
         </div>
     </div>
-</div>
 {% endblock %} 

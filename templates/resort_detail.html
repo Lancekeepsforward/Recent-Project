@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}度假村详情 - TravelHub{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-md-6">
+            {% if resort.picture_local_address %}
+                <img src="{{ url_for('static', filename=resort.picture_local_address) }}" class="img-fluid rounded mb-3" alt="度假村图片">
+            {% endif %}
+        </div>
+        <div class="col-md-6">
+            <h2>{{ resort.resort_name }}</h2>
+            <p><strong>国家：</strong>{{ resort.country }}</p>
+            <p><strong>城市：</strong>{{ resort.city }}</p>
+            <p><strong>类型：</strong>{{ resort.resort_type }}</p>
+            <p><strong>平均推荐分数：</strong>{{ avg_score if avg_score is not none else '无' }}</p>
+        </div>
+    </div>
+    <hr>
+    <h4>所有评论与评分</h4>
+    {% if user_resorts %}
+        <div class="list-group mb-4">
+            {% for ur in user_resorts %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>用户：</strong>{{ ur.user.nickname }}
+                        {% if ur.recommendation is not none %} | <strong>评分：</strong>{{ ur.recommendation }}{% endif %}
+                        {% if ur.expenditure is not none %} | <strong>开销：</strong>{{ ur.expenditure }}{% endif %}
+                        <br>
+                        <strong>评论：</strong>{{ ur.comment or '无' }}
+                    </div>
+                    <div class="text-end text-muted" style="white-space:nowrap;min-width:120px;">
+                        {{ ur.created_at.strftime('%Y-%m-%d %H:%M') if ur.created_at else '' }}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>暂无评论。</p>
+    {% endif %}
+    {% if current_user.is_authenticated %}
+    <hr>
+    <h4>我要评论/打分</h4>
+    <form method="POST">
+        <div class="mb-3">
+            <label class="form-label">评分（1-10分）</label>
+            <input type="number" class="form-control" name="recommendation" min="1" max="10">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">开销（元）</label>
+            <input type="number" class="form-control" name="expenditure" min="0" step="0.01">
+        </div>
+        <div class="mb-3">
+            <label class="form-label">评论</label>
+            <textarea class="form-control" name="comment" rows="3"></textarea>
+        </div>
+        <button type="submit" class="btn btn-success">提交</button>
+    </form>
+    {% else %}
+        <p class="text-muted">请 <a href="{{ url_for('login') }}">登录</a> 后发表评论和打分。</p>
+    {% endif %}
+</div>
+{% endblock %} 

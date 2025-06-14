@@ -1,28 +1,96 @@
 {% extends "base.html" %}
 
-{% block title %}TravelHub - Home{% endblock %}
+{% block title %}首页 - TravelHub{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Top Rated Resorts</h1>
-<div class="row row-cols-1 row-cols-md-3 g-4">
-    {% for resort, avg_score in resorts %}
-    <div class="col">
-        <div class="card h-100">
-            {% if resort.picture_local_address %}
-            <img src="{{ resort.picture_local_address }}" class="card-img-top" alt="{{ resort.resort_name }}">
-            {% else %}
-            <img src="{{ url_for('static', filename='images/default-resort.jpg') }}" class="card-img-top" alt="Default Resort Image">
-            {% endif %}
-            <div class="card-body">
-                <h5 class="card-title">{{ resort.resort_name }}</h5>
-                <p class="card-text">
-                    <strong>Location:</strong> {{ resort.city }}, {{ resort.state }}, {{ resort.country }}<br>
-                    <strong>Type:</strong> {{ resort.resort_type }}<br>
-                    <strong>Average Rating:</strong> {{ "%.1f"|format(avg_score|float) }}/10
-                </p>
+    <h2 class="mb-4">度假村推荐榜单</h2>
+    {# resort 卡片列表区域 #}
+    <div id="resort-list" class="row">
+        {% for resort, avg_score in resorts %}
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    {% if resort.picture_local_address %}
+                        <a href="{{ url_for('resort_detail', resort_id=resort.id) }}">
+                            <img src="{{ url_for('static', filename=resort.picture_local_address) }}" class="card-img-top resort-img-hover" alt="图片" style="height:180px;object-fit:cover;transition:transform 0.3s;">
+                        </a>
+                    {% endif %}
+                    <div class="card-body">
+                        <h5 class="card-title">{{ resort.resort_name }}</h5>
+                        <p class="card-text">
+                            <strong>国家：</strong>{{ resort.country }}<br>
+                            <strong>城市：</strong>{{ resort.city }}<br>
+                            <strong>类型：</strong>{{ resort.resort_type }}<br>
+                            <strong>平均推荐分数：</strong>{{ avg_score|default('无', true) }}
+                        </p>
+                    </div>
+                </div>
             </div>
-        </div>
+        {% endfor %}
     </div>
-    {% endfor %}
-</div>
+    {# 加载更多按钮 #}
+    <div class="text-center mb-4">
+        <button id="load-more-btn" class="btn btn-primary">加载更多</button>
+        <div id="no-more" style="display:none;">已加载全部</div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.resort-img-hover:hover {
+    transform: scale(1.08);
+    z-index: 2;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+</style>
+<script>
+let offset = 20;
+const limit = 20;
+const btn = document.getElementById('load-more-btn');
+const resortList = document.getElementById('resort-list');
+const noMore = document.getElementById('no-more');
+
+btn.addEventListener('click', function() {
+    btn.disabled = true;
+    btn.textContent = '加载中...';
+    fetch(`/api/resorts?offset=${offset}&limit=${limit}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.length === 0) {
+                btn.style.display = 'none';
+                noMore.style.display = '';
+                return;
+            }
+            for (const r of data) {
+                const col = document.createElement('div');
+                col.className = 'col-md-4 mb-4';
+                col.innerHTML = `
+                    <div class=\"card h-100\">
+                        ${r.picture ? `<a href='/resort/${r.id}'><img src='${r.picture}' class='card-img-top resort-img-hover' alt='图片' style='height:180px;object-fit:cover;transition:transform 0.3s;'></a>` : ''}
+                        <div class=\"card-body\">
+                            <h5 class=\"card-title\">${r.resort_name}</h5>
+                            <p class=\"card-text\">
+                                <strong>国家：</strong>${r.country}<br>
+                                <strong>城市：</strong>${r.city}<br>
+                                <strong>类型：</strong>${r.resort_type}<br>
+                                <strong>平均推荐分数：</strong>${r.avg_score}
+                            </p>
+                        </div>
+                    </div>
+                `;
+                resortList.appendChild(col);
+            }
+            offset += data.length;
+            btn.disabled = false;
+            btn.textContent = '加载更多';
+            if (data.length < limit) {
+                btn.style.display = 'none';
+                noMore.style.display = '';
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = '加载更多';
+        });
+});
+</script>
 {% endblock %} 

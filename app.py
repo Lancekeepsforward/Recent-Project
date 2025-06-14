@@ -1,206 +1,248 @@
-# 导入必要的库和模块
-from flask import Flask, render_template, request, redirect, url_for, flash  # Flask核心功能及模板渲染等工具
-# Flask-SQLAlchemy 是 Flask 的一个扩展，主要用于简化在 Flask 应用中与数据库的交互操作。
-# 它提供了一个高级的 ORM（对象关系映射）接口，允许开发者使用 Python 类和对象来表示数据库表和记录，
-# 而无需编写复杂的 SQL 语句。通过它可以方便地进行数据库的创建、查询、插入、更新和删除等操作。
-from flask_sqlalchemy import SQLAlchemy  
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+import os
+from dotenv import load_dotenv
+from setup_db import db, User, Resort, UserResort, init_app
+import uuid
+from werkzeug.utils import secure_filename
+import re
 
-# Flask-Login 是 Flask 的一个用户认证扩展，用于处理用户的登录、登出和会话管理。
-# LoginManager 是该扩展的核心类，负责管理整个应用的用户认证流程；
-# UserMixin 是一个帮助类，为用户模型提供了一些默认的实现方法，如 is_authenticated、is_active 等；
-# login_user 函数用于将用户登录到应用中；
-# login_required 装饰器用于保护某些路由，只有登录用户才能访问；
-# logout_user 函数用于将用户从应用中登出；
-# current_user 是一个代理对象，在视图函数中可以方便地获取当前登录的用户。
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash  # 密码哈希处理工具
-from datetime import datetime, timezone, timedelta  # 时间处理模块
-import os  # 操作系统相关功能
-# 导入dotenv库中的load_dotenv函数，该函数用于从.env文件中加载环境变量。
-# 在开发和部署过程中，我们常常需要将敏感信息（如数据库密码、API密钥等）存储在环境变量中，
-# 而不是直接写在代码里，这样可以提高代码的安全性。使用load_dotenv函数，
-# 我们可以方便地从项目根目录下的.env文件中读取这些环境变量，
-# 并将它们添加到Python的os.environ字典中，以便后续代码可以通过os.getenv()方法获取这些变量的值。
-from dotenv import load_dotenv  # 加载环境变量的工具
-import pymysql  # 添加PyMySQL导入
-import pytz
-
-# 这段代码的作用是将PyMySQL注册为MySQLdb的替代。在一些旧的Python库或框架中，可能会使用MySQLdb来连接MySQL数据库，
-# 但MySQLdb对Python 3的支持有限，而PyMySQL是一个纯Python实现的MySQL客户端，兼容MySQLdb的API。
-# 通过调用pymysql.install_as_MySQLdb()，可以让这些旧的库或框架在使用MySQLdb时，实际上使用PyMySQL来完成数据库连接操作。
-pymysql.install_as_MySQLdb()
-
-# 是的，调用 load_dotenv() 函数后，.env 文件里的变量和值会被加载到 Python 的环境变量中，
-# 后续可以通过 os.getenv() 方法获取这些变量的值。
+# Load environment variables
 load_dotenv()
 
-# 初始化Flask应用
+# Initialize Flask app
 app = Flask(__name__)
 
-# 应用配置
-# app.config['SECRET_KEY'] 通常是一个字符串类型的数据。
-# 它在 Flask 应用中主要用于会话签名，确保会话数据在客户端和服务器之间传输时的完整性和安全性。
-# 会话数据会被加密存储在客户端的 cookie 中，SECRET_KEY 就是用于加密和解密这些数据的密钥。
-# 如果密钥泄露，攻击者可能会篡改会话数据，造成安全风险。
-# os.getenv('SECRET_KEY', 'P@ssw0rd!Tr@v3lH^b789') 会尝试从环境变量中获取名为 'SECRET_KEY' 的值。
-# 如果环境变量中存在 'SECRET_KEY'，则返回该环境变量的值，类型为字符串；
-# 如果环境变量中不存在 'SECRET_KEY'，则返回默认值 'P@ssw0rd!Tr@v3lH^b789'，这也是一个字符串。
-# 它不会进行变量拼接，只是简单地返回环境变量值或默认值。
-# os.getenv() 函数用于从环境变量中获取指定名称的值。
-# 第一个参数 'SECRET_KEY' 是要查找的环境变量名。
-# 第二个参数 'P@ssw0rd!Tr@v3lH^b789' 是当环境变量中不存在该名称时返回的默认值。
-# 这里将获取到的值赋给 Flask 应用配置中的 'SECRET_KEY'，用于会话签名。
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')  # 用于会话签名的密钥，优先从环境变量获取
+# Configure app
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
-# 数据库配置
-DB_USER = os.getenv('DB_USER')
-DB_PASSWORD = os.getenv('DB_PASSWORD') 
-DB_HOST = os.getenv('DB_HOST')
-DB_NAME = os.getenv('DB_NAME')
-
-# 构建数据库URI
-# 'SQLALCHEMY_DATABASE_URI' 名字不建议更改，格式有讲究，它遵循数据库连接 URI 的通用格式：
-# dialect+driver://username:password@host:port/database
-# 这里的 dialect 是数据库类型（如 mysql），driver 是使用的驱动（如 pymysql），
-# 后面依次是用户名、密码、主机地址、端口（默认可省略）和数据库名。
-# 该配置不是固定的，可根据使用的数据库类型和驱动进行修改。
-# 例如，如果使用 PostgreSQL 数据库，可改为 'postgresql+psycopg2://...'。
-
-# 构建数据库 URI
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
-# 关闭 SQLAlchemy 的修改跟踪（减少内存消耗）
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# 初始化数据库实例
-db = SQLAlchemy(app)
-
-# 初始化登录管理器（用于用户会话管理）
-# 第一步：创建 LoginManager 实例
-# LoginManager 是 Flask-Login 扩展中的核心类，用于管理整个应用的用户认证流程。
-# 通过创建这个实例，我们可以使用 Flask-Login 提供的各种功能，如用户登录、登出、会话管理等。
+# Initialize database and login manager
+init_app(app)
 login_manager = LoginManager()
-
-# 第二步：将 LoginManager 实例与 Flask 应用进行绑定
-# init_app 方法是 LoginManager 类提供的一个方法，用于将 LoginManager 实例与指定的 Flask 应用关联起来。
-# 这样，Flask-Login 就能在该应用中正常工作，处理用户的认证相关事务。
 login_manager.init_app(app)
+login_manager.login_view = 'login'
 
-# 第三步：设置未登录用户重定向的登录路由
-# login_view 属性用于指定当一个未登录的用户尝试访问需要登录才能访问的路由时，
-# 系统应该将其重定向到哪个路由。这里将其设置为 'login'，意味着未登录用户会被重定向到名为 'login' 的路由。
-login_manager.login_view = 'login'  # 指定未登录用户重定向的登录路由
+UPLOAD_FOLDER = os.path.join('static', 'resort_pics')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-eastern = pytz.timezone('US/Eastern')
-# 数据库模型定义
-class User(UserMixin, db.Model):  # 用户模型，继承UserMixin（提供登录所需的默认方法）和db.Model（数据库模型基类）
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键（自动递增）
-    username = db.Column(db.String(80), unique=True, nullable=False)  # 用户名（唯一且非空）
-    nickname = db.Column(db.String(80), nullable=False)  # 昵称（非空)
-    password_hash = db.Column(db.String(128))  # 密码哈希值（存储加密后的密码）
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(eastern))  # 用户创建时间（默认美东时间）
-    # 定义了一个名为 resorts 的关系属性，用于表示用户和度假村评价之间的一对多关系
-    # db.relationship() 是 SQLAlchemy 提供的关系映射函数，用于定义表之间的关联
-    # 第一个参数 'UserResort' 指定了关联的目标模型类名
-    # backref='user' 会在 UserResort 模型中自动创建一个 user 属性，可以通过 user_resort.user 反向访问对应的用户
-    # lazy=True 表示采用延迟加载策略，只有在实际访问 resorts 属性时才会从数据库加载数据，可以提高性能
-    # 
-    # 这种关系映射相当于在原始 SQL 中的:
-    # SELECT * FROM user_resort WHERE user_id = <当前用户id>
-    # 但使用 SQLAlchemy 的方式更加面向对象，例如:
-    # user.resorts 可以获取该用户的所有度假村评价
-    # 或者 user_resort.user 可以获取某个评价对应的用户
-    resorts = db.relationship('UserResort', backref='user', lazy=True)
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-class Resort(db.Model):  # 度假村模型
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键
-    country = db.Column(db.String(100), nullable=False)  # 国家（非空）
-    state = db.Column(db.String(100))  # 州/省（可选）
-    city = db.Column(db.String(100))  # 城市（可选）
-    county = db.Column(db.String(100))  # 县（可选）
-    resort_name = db.Column(db.String(200), nullable=False)  # 度假村名称（非空）
-    picture_local_address = db.Column(db.String(500))  # 图片本地存储路径（可选）
-    # 度假村类型（枚举类型，限制可选值）
-    resort_type = db.Column(db.Enum('Beach', 'Mountain', 'Spa', 'Adventure', 'Cultural', 'Urban', 'Rural', 'Luxury', 'Budget', 'Family',
-                                    'Desert', 'Forest', 'Island', 'Lake', 'River', 'Valley', 'Volcano', 'Waterfall', 'Cave', 'Coast',
-                                    'Safari', 'Ski', 'Golf', 'Wine', 'Wellness', 'Yoga', 'Fishing', 'Hunting', 'Cycling', 'Hiking',
-                                    'Surfing', 'Diving', 'Sailing', 'Kayaking', 'Camping', 'Glamping', 'Eco', 'Sustainable', 'Historic', 'Heritage',
-                                    'Art', 'Music', 'Food', 'Shopping', 'Nightlife', 'Romantic', 'Solo', 'Group', 'Accessible', 'PetFriendly'), nullable=False)
-    user_resorts = db.relationship('UserResort', backref='resort', lazy=True)  # 与UserResort的一对多关系（被收藏的记录）
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-class UserResort(db.Model):  # 用户-度假村关联模型（记录用户对度假村的评价）
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # 用户ID（外键关联User表）
-    resort_id = db.Column(db.Integer, db.ForeignKey('resort.id'), nullable=False)  # 度假村ID（外键关联Resort表）
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(eastern))  # 记录创建时间（默认美东时间））
-    recommendation = db.Column(db.Integer)  # 推荐指数（可选数值）
-    expenditure = db.Column(db.Float)  # 消费金额（可选浮点数）
-    comment = db.Column(db.Text)  # 评论内容（可选长文本）
-
-# 登录管理器的用户加载回调函数（用于从用户ID获取用户对象）
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))  # 通过ID查询用户（返回User对象或None）
+    return User.query.get(int(user_id))
 
-# 路由定义
 @app.route('/')
 def home():
-    # 查询逻辑：获取平均推荐分最高的度假村
-    # 使用SQLAlchemy的聚合函数计算每个度假村的平均推荐分，并按降序排序
+    """
+    主页路由处理函数
+    查询所有度假村及其平均评分，按评分从高到低排序展示
+    
+    Returns:
+        返回渲染后的home.html模板，传入度假村数据和对应的平均评分
+    """
+    # 只查询前20个 resort
     resorts = db.session.query(
         Resort,
-        db.func.avg(UserResort.recommendation).label('avg_score')  # 计算平均推荐分并别名
-    ).join(UserResort).group_by(Resort.id).order_by(db.desc('avg_score')).all()
-    return render_template('home.html', resorts=resorts)  # 渲染主页模板并传递度假村数据
+        db.func.avg(UserResort.recommendation).label('avg_score')
+    ).join(UserResort, isouter=True).group_by(Resort.id).order_by(db.desc('avg_score')).limit(20).all()
+    return render_template('home.html', resorts=resorts)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':  # 处理POST请求（表单提交）
-        username = request.form.get('username')  # 获取表单中的用户名
-        password = request.form.get('password')  # 获取表单中的密码
-        user = User.query.filter_by(username=username).first()  # 根据用户名查询用户
-
-        # 验证用户存在且密码正确
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)  # 登录用户（设置会话）
-            return redirect(url_for('home'))  # 重定向到主页
-        flash('Invalid username or password')  # 验证失败时显示错误提示
-    return render_template('login.html')  # 渲染登录页面（GET请求或验证失败时）
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        print(f"Login attempt - Username: {username}")
+        
+        user = User.query.filter_by(username=username).first()
+        if user:
+            print(f"User found: {user.username}")
+            print(f"Password check result: {user.password == password}")
+            if user.password == password:
+                login_user(user)
+                print("Login successful")
+                # 登录成功后重定向到用户个人页面
+                return redirect(url_for('profile'))
+            else:
+                print("Password check failed")
+        else:
+            print(f"No user found with username: {username}")
+            
+        flash('Invalid username or password')
+    return render_template('login.html')
 
 @app.route('/logout')
-@login_required  # 需要登录才能访问的路由
+@login_required
 def logout():
-    logout_user()  # 登出用户（清除会话）
-    return redirect(url_for('home'))  # 重定向到主页
+    logout_user()
+    return redirect(url_for('home'))
 
-@app.route('/profile')
-@login_required  # 需要登录才能访问的路由
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
 def profile():
-    return render_template('profile.html')  # 渲染个人资料页面
+    if request.method == 'POST':
+        try:
+            resort_name = request.form.get('resort_name')
+            country = request.form.get('country')
+            state = request.form.get('state')
+            city = request.form.get('city')
+            county = request.form.get('county')
+            resort_type = request.form.get('resort_type')
+            recommendation = request.form.get('recommendation')
+            expenditure = request.form.get('expenditure')
+            comment = request.form.get('comment')
+            picture = request.files.get('picture')
+            # 处理图片上传
+            picture_path = None
+            if picture and allowed_file(picture.filename):
+                filename = secure_filename(str(uuid.uuid4()) + '_' + picture.filename)
+                picture_save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                picture.save(picture_save_path)
+                picture_path = os.path.join('resort_pics', filename)
+            # 新建 Resort，指定创建者
+            new_resort = Resort(
+                country=country,
+                state=state,
+                city=city,
+                county=county,
+                resort_name=resort_name,
+                resort_type=resort_type,
+                picture_local_address=picture_path,
+                creator_id=current_user.id
+            )
+            db.session.add(new_resort)
+            db.session.commit()
+            # 新建 UserResort 关联，写入评分、花销、评论
+            user_resort = UserResort(
+                user_id=current_user.id,
+                resort_id=new_resort.id,
+                recommendation=int(recommendation) if recommendation else None,
+                expenditure=float(expenditure) if expenditure else None,
+                comment=comment
+            )
+            db.session.add(user_resort)
+            db.session.commit()
+            flash('新度假村已提交！')
+        except Exception as e:
+            db.session.rollback()
+            print(f"添加度假村失败: {e}")
+            flash('添加度假村失败，请检查输入内容或稍后再试。')
+        return redirect(url_for('profile'))
+    # 只查找当前用户自己创建的度假村
+    resorts = Resort.query.filter_by(creator_id=current_user.id).all()
+    return render_template('profile.html', resorts=resorts)
 
-# 启动应用（仅当直接运行此脚本时执行）
-# 在数据库配置后添加以下代码
-from sqlalchemy import exc
+@app.route('/debug/users')
+def debug_users():
+    users = User.query.all()
+    result = []
+    for user in users:
+        result.append({
+            'id': user.id,
+            'username': user.username,
+            'nickname': user.nickname,
+            'is_admin': user.is_admin,
+            'created_at': user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else None
+        })
+    return {'users': result}
 
-# 新增数据库配置模块
-class DatabaseConfig:
-    @staticmethod
-    def initialize():
-        # 合并原app.py和setup_db.py的初始化逻辑
-        def initialize_database():
-            try:
-                with app.app_context():
-                    db.create_all()
-                    # 添加示例数据
-                    if not User.query.first():
-                        admin = User(username='admin', password_hash=generate_password_hash('admin123'))
-                        db.session.add(admin)
-                        db.session.commit()
-            except exc.OperationalError as e:
-                print(f"数据库连接失败: {str(e)}")
-            except Exception as e:
-                print(f"初始化错误: {str(e)}")
+@app.route('/api/resorts')
+def api_resorts():
+    try:
+        offset = int(request.args.get('offset', 0))
+        limit = int(request.args.get('limit', 20))
+    except Exception:
+        offset = 0
+        limit = 20
+    resorts = db.session.query(
+        Resort,
+        db.func.avg(UserResort.recommendation).label('avg_score')
+    ).join(UserResort, isouter=True).group_by(Resort.id).order_by(db.desc('avg_score')).offset(offset).limit(limit).all()
+    result = []
+    for resort, avg_score in resorts:
+        result.append({
+            'id': resort.id,
+            'resort_name': resort.resort_name,
+            'country': resort.country,
+            'city': resort.city,
+            'picture': url_for('static', filename=resort.picture_local_address) if resort.picture_local_address else None,
+            'avg_score': avg_score if avg_score is not None else '无',
+            'resort_type': resort.resort_type
+        })
+    return jsonify(result)
 
-# 在if __name__ == '__main__':块中调用
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        nickname = request.form.get('nickname')
+        password = request.form.get('password')
+        # 密码复杂度要求：8-13位，包含大写、小写、数字和特殊字符
+        password_require = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,13}$'
+        if not re.match(password_require, password):
+            flash('密码必须为8-13位，且包含大写、小写、数字和特殊字符')
+            return render_template('signup.html', username=username, nickname=nickname)
+        # 检查用户名唯一
+        if User.query.filter_by(username=username).first():
+            flash('用户名已存在，请更换')
+            return render_template('signup.html', username=username, nickname=nickname)
+        # 创建新用户
+        new_user = User(
+            username=username,
+            nickname=nickname,
+            password=password,
+            is_admin=False
+        )
+        db.session.add(new_user)
+        try:
+            db.session.commit()
+            flash('注册成功，请登录！')
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            flash('注册失败，请稍后再试')
+            return render_template('signup.html', username=username, nickname=nickname)
+    return render_template('signup.html')
+
+@app.route('/resort/<int:resort_id>', methods=['GET', 'POST'])
+def resort_detail(resort_id):
+    resort = Resort.query.get_or_404(resort_id)
+    # 查询所有与该resort相关的UserResort（评论/评分/开销），按时间倒序
+    user_resorts = UserResort.query.filter_by(resort_id=resort_id).join(User).order_by(UserResort.created_at.desc()).all()
+    # 计算平均分
+    avg_score = None
+    scores = [ur.recommendation for ur in user_resorts if ur.recommendation is not None]
+    if scores:
+        avg_score = round(sum(scores) / len(scores), 2)
+    # 处理评论/评分/开销提交
+    if request.method == 'POST' and current_user.is_authenticated:
+        comment = request.form.get('comment')
+        recommendation = request.form.get('recommendation')
+        expenditure = request.form.get('expenditure')
+        try:
+            recommendation = int(recommendation) if recommendation else None
+            expenditure = float(expenditure) if expenditure else None
+        except Exception:
+            flash('评分或开销格式不正确')
+            return redirect(url_for('resort_detail', resort_id=resort_id))
+        # 每次都新建一条评论记录
+        user_resort = UserResort(
+            user_id=current_user.id,
+            resort_id=resort_id,
+            comment=comment,
+            recommendation=recommendation,
+            expenditure=expenditure
+        )
+        db.session.add(user_resort)
+        db.session.commit()
+        flash('评论/评分已提交！')
+        return redirect(url_for('resort_detail', resort_id=resort_id))
+    return render_template('resort_detail.html', resort=resort, user_resorts=user_resorts, avg_score=avg_score)
+
 if __name__ == '__main__':
-    initialize_database()
     app.run(debug=True)
