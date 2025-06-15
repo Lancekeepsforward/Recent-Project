@@ -91,7 +91,7 @@ def initialize_database():
             admin_conn = pymysql.connect(
                 host='127.0.0.1',
                 user=root_user,
-                password=root_password+"!",
+                password=root_password,
                 charset='utf8mb4'
             )
         
